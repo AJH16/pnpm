@@ -1,6 +1,6 @@
+import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { execSync } from 'node:child_process'
 
 // Background
 // ----------
@@ -59,28 +59,9 @@ const DEPLOY_DIR = path.join(import.meta.dirname, 'temp-deploy')
 const NODE_MODULES_TEMP_DIR = path.join(DEPLOY_DIR, 'node_modules')
 const NODE_MODULES_DEST_DIR = path.join(import.meta.dirname, 'dist/node_modules')
 
-/**
- * Remove files like CHANGELOG.md, README.md, etc from node_modules to keep the
- * final distribution smaller.
- */
-function cleanupNodeModules (dir: string) {
-  const nmPrune = path.join(import.meta.dirname, 'node_modules/.bin/nm-prune')
-  execSync(`${nmPrune} --force`, { cwd: dir, stdio: 'inherit' })
+createDistNodeModules()
 
-  const pnpmStateFiles = [
-    // Since we're installing with --node-linker=hoisted, this directory only
-    // contains a small .lock.yaml file that's not needed in the final
-    // distribution.
-    'node_modules/.pnpm',
-    'node_modules/.modules.yaml',
-    'node_modules/.pnpm-workspace-state-v1.json',
-  ]
-  for (const file of pnpmStateFiles) {
-    fs.rmSync(path.join(dir, file), { recursive: true })
-  }
-}
-
-function createDistNodeModules () {
+function createDistNodeModules (): void {
   // Remove the target directory to ensure the results of this script are as
   // deterministic as possible and don't carry over old state.
   fs.rmSync(DEPLOY_DIR, { recursive: true, force: true })
@@ -96,7 +77,7 @@ function createDistNodeModules () {
     '--filter=pnpm',
     '--prod',
     'deploy',
-    DEPLOY_DIR
+    DEPLOY_DIR,
   ].join(' ')
   execSync(pnpmDeploy, { cwd: WORKSPACE_DIR, stdio: 'inherit' })
 
@@ -109,4 +90,23 @@ function createDistNodeModules () {
   fs.rmSync(DEPLOY_DIR, { recursive: true })
 }
 
-createDistNodeModules()
+/**
+ * Remove files like CHANGELOG.md, README.md, etc from node_modules to keep the
+ * final distribution smaller.
+ */
+function cleanupNodeModules (dir: string): void {
+  const nmPrune = path.join(import.meta.dirname, 'node_modules/.bin/nm-prune')
+  execSync(`${nmPrune} --force`, { cwd: dir, stdio: 'inherit' })
+
+  const pnpmStateFiles = [
+    // Since we're installing with --node-linker=hoisted, this directory only
+    // contains a small .lock.yaml file that's not needed in the final
+    // distribution.
+    'node_modules/.pnpm',
+    'node_modules/.modules.yaml',
+    'node_modules/.pnpm-workspace-state-v1.json',
+  ]
+  for (const file of pnpmStateFiles) {
+    fs.rmSync(path.join(dir, file), { recursive: true })
+  }
+}
