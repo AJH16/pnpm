@@ -1,6 +1,6 @@
-import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { execSync } from 'node:child_process'
 
 // Background
 // ----------
@@ -59,42 +59,11 @@ const DEPLOY_DIR = path.join(import.meta.dirname, 'temp-deploy')
 const NODE_MODULES_TEMP_DIR = path.join(DEPLOY_DIR, 'node_modules')
 const NODE_MODULES_DEST_DIR = path.join(import.meta.dirname, 'dist/node_modules')
 
-createDistNodeModules()
-
-function createDistNodeModules (): void {
-  // Remove the target directory to ensure the results of this script are as
-  // deterministic as possible and don't carry over old state.
-  fs.rmSync(DEPLOY_DIR, { recursive: true, force: true })
-
-  const pnpmDeploy = [
-    'pnpm',
-    '--config.inject-workspace-packages=true',
-    '--config.node-linker=hoisted',
-    '--ignore-scripts',
-    // --force installs all optional dependencies regardless of platform, so that
-    // all @reflink/reflink-* platform packages end up in dist/node_modules.
-    '--force',
-    '--filter=pnpm',
-    '--prod',
-    'deploy',
-    DEPLOY_DIR,
-  ].join(' ')
-  execSync(pnpmDeploy, { cwd: WORKSPACE_DIR, stdio: 'inherit' })
-
-  cleanupNodeModules(DEPLOY_DIR)
-
-  fs.rmSync(NODE_MODULES_DEST_DIR, { recursive: true, force: true })
-  fs.mkdirSync(path.dirname(NODE_MODULES_DEST_DIR), { recursive: true })
-  fs.renameSync(NODE_MODULES_TEMP_DIR, NODE_MODULES_DEST_DIR)
-
-  fs.rmSync(DEPLOY_DIR, { recursive: true })
-}
-
 /**
  * Remove files like CHANGELOG.md, README.md, etc from node_modules to keep the
  * final distribution smaller.
  */
-function cleanupNodeModules (dir: string): void {
+function cleanupNodeModules (dir: string) {
   const nmPrune = path.join(import.meta.dirname, 'node_modules/.bin/nm-prune')
   execSync(`${nmPrune} --force`, { cwd: dir, stdio: 'inherit' })
 
@@ -110,3 +79,34 @@ function cleanupNodeModules (dir: string): void {
     fs.rmSync(path.join(dir, file), { recursive: true })
   }
 }
+
+function createDistNodeModules () {
+  // Remove the target directory to ensure the results of this script are as
+  // deterministic as possible and don't carry over old state.
+  fs.rmSync(DEPLOY_DIR, { recursive: true, force: true })
+
+  const pnpmDeploy = [
+    'pnpm',
+    '--config.inject-workspace-packages=true',
+    '--config.node-linker=hoisted',
+    '--ignore-scripts',
+    // --force installs all optional dependencies regardless of platform, so that
+    // all @reflink/reflink-* platform packages end up in dist/node_modules.
+    '--force',
+    '--filter=pnpm',
+    '--prod',
+    'deploy',
+    DEPLOY_DIR
+  ].join(' ')
+  execSync(pnpmDeploy, { cwd: WORKSPACE_DIR, stdio: 'inherit' })
+
+  cleanupNodeModules(DEPLOY_DIR)
+
+  fs.rmSync(NODE_MODULES_DEST_DIR, { recursive: true, force: true })
+  fs.mkdirSync(path.dirname(NODE_MODULES_DEST_DIR), { recursive: true })
+  fs.renameSync(NODE_MODULES_TEMP_DIR, NODE_MODULES_DEST_DIR)
+
+  fs.rmSync(DEPLOY_DIR, { recursive: true })
+}
+
+createDistNodeModules()
