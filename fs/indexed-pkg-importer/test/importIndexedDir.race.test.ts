@@ -47,7 +47,7 @@ test('importIndexedDir with safeToSkip falls through to renameOverwriteSync when
   const srcFile = path.join(tmp, 'src', 'index.js')
   const newDir = path.join(tmp, 'dest')
 
-  // Create source file with different content
+  // Create source file
   fs.mkdirSync(path.join(tmp, 'src'), { recursive: true })
   fs.writeFileSync(srcFile, 'new-content')
 
