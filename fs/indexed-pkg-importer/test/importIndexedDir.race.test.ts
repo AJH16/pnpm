@@ -3,10 +3,9 @@ import path from 'path'
 import { jest } from '@jest/globals'
 import { tempDir } from '@pnpm/prepare'
 
-// renameOverwrite is mocked because its real implementation handles ENOTEMPTY
-// internally (rimraf + retry). The race condition we're testing only surfaces
-// when renameOverwrite exhausts its retries due to concurrent threads
-// repeatedly recreating the target, which can't be reproduced deterministically.
+// renameOverwrite is mocked to simulate a worst-case scenario where it always
+// fails with ENOTEMPTY. In production, rename-overwrite handles ENOTEMPTY
+// internally with swap-rename, but we test the fallback path here.
 const renameOverwriteSyncMock = jest.fn()
 jest.unstable_mockModule('rename-overwrite', () => ({
   renameOverwrite: jest.fn(),
@@ -19,7 +18,7 @@ beforeEach(() => {
   renameOverwriteSyncMock.mockReset()
 })
 
-test('importIndexedDir succeeds when rename races with another thread (ENOTEMPTY)', () => {
+test('importIndexedDir with safeToSkip succeeds when target already has expected content', () => {
   const tmp = tempDir()
   const srcFile = path.join(tmp, 'src', 'index.js')
   const newDir = path.join(tmp, 'dest')
@@ -34,17 +33,41 @@ test('importIndexedDir succeeds when rename races with another thread (ENOTEMPTY
 
   const filenames = new Map([['index.js', srcFile]])
 
+  // Should not throw — safeToSkip detects the target already has the expected
+  // content and returns without calling renameOverwriteSync
+  importIndexedDir(fs.copyFileSync, newDir, filenames, { safeToSkip: true })
+
+  expect(fs.existsSync(path.join(newDir, 'index.js'))).toBe(true)
+  // renameOverwriteSync should not be called when safeToSkip detects matching content
+  expect(renameOverwriteSyncMock).not.toHaveBeenCalled()
+})
+
+test('importIndexedDir with safeToSkip falls through to renameOverwriteSync when target has different content', () => {
+  const tmp = tempDir()
+  const srcFile = path.join(tmp, 'src', 'index.js')
+  const newDir = path.join(tmp, 'dest')
+
+  // Create source file
+  fs.mkdirSync(path.join(tmp, 'src'), { recursive: true })
+  fs.writeFileSync(srcFile, 'new-content')
+
+  // Pre-create target with DIFFERENT content
+  fs.mkdirSync(newDir, { recursive: true })
+  fs.writeFileSync(path.join(newDir, 'index.js'), 'old-content')
+
+  const filenames = new Map([['index.js', srcFile]])
+
   renameOverwriteSyncMock.mockImplementation(() => {
     throw Object.assign(new Error('ENOTEMPTY: directory not empty'), { code: 'ENOTEMPTY' })
   })
 
-  // Should not throw — the target already has the expected content
-  importIndexedDir(fs.copyFileSync, newDir, filenames, {})
-
-  expect(fs.existsSync(path.join(newDir, 'index.js'))).toBe(true)
+  // Should throw because target has wrong content and renameOverwriteSync also fails
+  expect(() => {
+    importIndexedDir(fs.copyFileSync, newDir, filenames, { safeToSkip: true })
+  }).toThrow('ENOTEMPTY')
 })
 
-test('importIndexedDir throws ENOTEMPTY when target does not have expected content', () => {
+test('importIndexedDir without safeToSkip throws ENOTEMPTY when renameOverwriteSync fails', () => {
   const tmp = tempDir()
   const srcFile = path.join(tmp, 'src', 'index.js')
   const newDir = path.join(tmp, 'dest')
@@ -52,9 +75,6 @@ test('importIndexedDir throws ENOTEMPTY when target does not have expected conte
   // Create source file
   fs.mkdirSync(path.join(tmp, 'src'), { recursive: true })
   fs.writeFileSync(srcFile, 'content')
-
-  // Target exists but does NOT have the expected file
-  fs.mkdirSync(newDir, { recursive: true })
 
   const filenames = new Map([['index.js', srcFile]])
 
